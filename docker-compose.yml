@@ -1,0 +1,60 @@
+name: codemaster
+
+services:
+  # PostgreSQL 
+  postgres:
+    image: postgres:15-alpine
+    container_name: codemaster-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./base/cdc/scripts:/scripts    # cdc debezium scripts
+      - postgres_data:/var/lib/postgresql/data
+      # - ./migrations:/docker-entrypoint-initdb.d:ro  # for migrations
+
+    ports: ["5432:5432"]
+    networks: [codemaster-net]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  # Main App
+  app:
+    build:
+      context: ./                      # Points to project root
+      dockerfile: ./Dockerfile  # Path from context to Dockerfile
+    container_name: codemaster-app
+    ports:
+      - "${APP_PORT}:8080"
+      - "8081:8081"  # Health probe
+    environment:
+      - POSTGRES_HOST
+      - POSTGRES_PORT
+      - POSTGRES_DB
+      - POSTGRES_USER
+      - POSTGRES_PASSWORD
+    env_file: ./.env
+    depends_on:
+      postgres: {condition: service_healthy}
+      # redis: {condition: service_healthy}
+    networks: [codemaster-net]
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  postgres_data:
+
+networks:
+  codemaster-net:
+    driver: bridge
