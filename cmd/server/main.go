@@ -16,8 +16,9 @@ import (
 	"github.com/himanshu3889/code-master-backend/base/utils"
 	"github.com/himanshu3889/code-master-backend/codeRunner"
 	"github.com/himanshu3889/code-master-backend/configs"
-	"github.com/himanshu3889/code-master-backend/internal/apiHandler"
+	handler "github.com/himanshu3889/code-master-backend/internal/apiHandler"
 	"github.com/himanshu3889/code-master-backend/internal/database"
+	"github.com/himanshu3889/code-master-backend/internal/jobs"
 	"github.com/himanshu3889/code-master-backend/internal/store"
 	appWebsocket "github.com/himanshu3889/code-master-backend/internal/websocket"
 )
@@ -32,6 +33,9 @@ func RunServer() {
 
 	store := store.New(database.PostgresDB)
 	h := handler.New(store)
+
+	// Start background submission retry worker (every 5 min, min age 5 min, batch 20)
+	stopRetryWorker := jobs.StartSubmissionRetryWorker(store, 5*time.Minute, 5*time.Minute, 20)
 
 	r := gin.Default()
 
@@ -62,5 +66,6 @@ func RunServer() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	srv.Shutdown(ctx)
+	stopRetryWorker()                // Stop background retry worker gracefully
 	codeRunner.ShutdownCodeRunners() // Shutdown
 }

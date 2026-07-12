@@ -39,7 +39,7 @@ func (s *Store) CreateSubmissionLog(ctx context.Context, submission *models.Subm
 
 	// Insert submission
 	subQuery := `
-        INSERT INTO submissions 
+        INSERT INTO submissions
         (id, problem_id, stdin, language, test_cases, created_at)
         VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id
@@ -106,7 +106,7 @@ func (s *Store) UpdateSubmissionExecutionResults(ctx context.Context, submission
 	testResults := submission.TestResults
 
 	query := `
-        UPDATE submissions 
+        UPDATE submissions
         SET status=$2, execution_time_ms=$3, memory_used_kb=$4, stdout=$5, stderr=$6, test_results=$7
         WHERE id = $1
     `
@@ -130,22 +130,42 @@ func (s *Store) UpdateSubmissionExecutionResults(ctx context.Context, submission
 	return nil
 }
 
+// GetStalePendingSubmissions returns submissions stuck in PENDING status older than minAge.
+func (s *Store) GetStalePendingSubmissions(ctx context.Context, minAge time.Duration, limit int) ([]*models.Submission, *appError.Error) {
+	var submissions []*models.Submission
+	cutoff := time.Now().Add(-minAge)
+	query := `
+		SELECT id, problem_id, interview_session_id, language, status,
+		       execution_time_ms, memory_used_kb, stdin, stdout, stderr, test_cases, test_results, created_at
+		FROM submissions
+		WHERE status = 'PENDING'
+		  AND created_at < $1
+		ORDER BY created_at ASC
+		LIMIT $2
+	`
+	if err := s.db.SelectContext(ctx, &submissions, query, cutoff, limit); err != nil {
+		logrus.WithError(err).Error("Failed to get stale pending submissions")
+		return nil, appError.NewInternal("Failed to get stale pending submissions")
+	}
+	return submissions, nil
+}
+
 // Get the problems submissions
 func (s *Store) GetProblemSubmissions(ctx context.Context, problemID snowflake.ID, interviewSessionId *snowflake.ID) ([]*models.Submission, *appError.Error) {
 	var logs []*models.Submission
 	query := `
-		SELECT id, problem_id, interview_session_id, language, status, 
-		       execution_time_ms, memory_used_kb, stdin, stdout, stderr, test_cases, test_results, created_at 
-		FROM submissions 
+		SELECT id, problem_id, interview_session_id, language, status,
+		       execution_time_ms, memory_used_kb, stdin, stdout, stderr, test_cases, test_results, created_at
+		FROM submissions
 		WHERE problem_id = $1 AND interview_session_id IS NULL
 		ORDER BY created_at DESC
 	`
 	args := []interface{}{problemID}
 	if interviewSessionId != nil {
 		query = `
-			SELECT id, problem_id, interview_session_id, language, status, 
-				execution_time_ms, memory_used_kb, stdin, stdout, stderr, test_cases, test_results, created_at 
-			FROM submissions 
+			SELECT id, problem_id, interview_session_id, language, status,
+				execution_time_ms, memory_used_kb, stdin, stdout, stderr, test_cases, test_results, created_at
+			FROM submissions
 			WHERE problem_id = $1 AND interview_session_id=$2
 			ORDER BY created_at DESC
 		`
