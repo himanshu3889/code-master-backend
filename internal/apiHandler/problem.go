@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/himanshu3889/code-master-backend/base/lib/appError"
+	"github.com/himanshu3889/code-master-backend/base/lib/pagination"
 	"github.com/himanshu3889/code-master-backend/base/utils"
 	"github.com/himanshu3889/code-master-backend/internal/models"
 	appWebsocket "github.com/himanshu3889/code-master-backend/internal/websocket"
@@ -163,7 +164,7 @@ func (h *Handler) UpdateProblemNotes(c *gin.Context) {
 	utils.RespondWithSuccess(c, 201, gin.H{"message": "Problem note updated"})
 }
 
-// Get the the latest problems
+// Get the the latest problems with page-based pagination
 func (h *Handler) GetLatestProblems(c *gin.Context) {
 	limitStr := c.DefaultQuery("limit", "20")
 	limit, err := strconv.Atoi(limitStr)
@@ -171,14 +172,60 @@ func (h *Handler) GetLatestProblems(c *gin.Context) {
 		limit = 20
 	}
 
+	pageStr := c.DefaultQuery("page", "1")
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+
 	status := c.DefaultQuery("status", "")
 
-	problems, appErr := h.store.GetLatestProblems(c.Request.Context(), limit, status)
+	// Calculate offset from page
+	offset := (page - 1) * limit
+
+	// Get total count for pagination metadata
+	totalCount, appErr := h.store.CountProblems(c.Request.Context(), status)
 	if appErr != nil {
 		utils.RespondWithError(c, int(appErr.Code), appErr.Message)
 		return
 	}
-	utils.RespondWithSuccess(c, 200, problems)
+
+	problems, appErr := h.store.GetLatestProblems(c.Request.Context(), limit, offset, status)
+	if appErr != nil {
+		utils.RespondWithError(c, int(appErr.Code), appErr.Message)
+		return
+	}
+
+	// Compute pagination metadata
+	totalPages := int((totalCount + int64(limit) - 1) / int64(limit))
+	hasNext := page < totalPages
+	hasPrev := page > 1
+
+	var nextPage *int
+	if hasNext {
+		np := page + 1
+		nextPage = &np
+	}
+
+	var prevPage *int
+	if hasPrev {
+		pp := page - 1
+		prevPage = &pp
+	}
+
+	response := pagination.PaginatedResponse[[]*models.Problem]{
+		Data:       problems,
+		TotalCount: totalCount,
+		Page:       page,
+		PageSize:   limit,
+		TotalPages: totalPages,
+		NextPage:   nextPage,
+		PrevPage:   prevPage,
+		HasNext:    hasNext,
+		HasPrev:    hasPrev,
+	}
+
+	utils.RespondWithSuccess(c, 200, response)
 }
 
 // Get the the problem

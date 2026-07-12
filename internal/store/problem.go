@@ -167,8 +167,27 @@ func (s *Store) UpdateProblemNotes(ctx context.Context, problemId snowflake.ID, 
 	return nil
 }
 
-// Returns the newest problems first, when no cursor
-func (s *Store) GetLatestProblems(ctx context.Context, limit int, status string) ([]*models.Problem, *appError.Error) {
+// CountProblems returns the total number of problems, optionally filtered by status.
+func (s *Store) CountProblems(ctx context.Context, status string) (int64, *appError.Error) {
+	var count int64
+	var err error
+
+	if status == "" {
+		err = s.db.GetContext(ctx, &count, `SELECT COUNT(*) FROM problems`)
+	} else {
+		err = s.db.GetContext(ctx, &count, `SELECT COUNT(*) FROM problems WHERE status = $1`, status)
+	}
+
+	if err != nil {
+		logrus.WithError(err).Error("Failed to count problems")
+		return 0, appError.NewInternal("Failed to count problems")
+	}
+	return count, nil
+}
+
+// GetLatestProblems returns the newest problems first using page-based pagination.
+// Ordered by snowflake ID (DESC) which is chronologically sortable.
+func (s *Store) GetLatestProblems(ctx context.Context, limit int, offset int, status string) ([]*models.Problem, *appError.Error) {
 	problems := []*models.Problem{}
 	var err error
 
@@ -176,26 +195,29 @@ func (s *Store) GetLatestProblems(ctx context.Context, limit int, status string)
 		query := `
 		SELECT id, name, group_name, url, time_limit_ms, memory_limit_mb, status, difficulty_level,
 		       test_cases, created_at
-		FROM problems 
+		FROM problems
 		ORDER BY id DESC
-		LIMIT $1
+		LIMIT $1 OFFSET $2
 	`
-		err = s.db.SelectContext(ctx, &problems, query, limit)
+		err = s.db.SelectContext(ctx, &problems, query, limit, offset)
 
 	} else {
 		query := `
 		SELECT id, name, group_name, url, time_limit_ms, memory_limit_mb, status, difficulty_level,
 		       test_cases, created_at
-		FROM problems 
+		FROM problems
 		WHERE status=$1
 		ORDER BY id DESC
-		LIMIT $2
+		LIMIT $2 OFFSET $3
 		`
-		err = s.db.SelectContext(ctx, &problems, query, status, limit)
+		err = s.db.SelectContext(ctx, &problems, query, status, limit, offset)
 	}
 
 	if err != nil {
-		logrus.WithField("limit", limit).WithError(err).Error("Failed to get latest problems")
+		logrus.WithFields(logrus.Fields{
+			"limit":  limit,
+			"offset": offset,
+		}).WithError(err).Error("Failed to get latest problems")
 		return nil, appError.NewInternal("Failed to get latest problems")
 	}
 	return problems, nil
@@ -205,10 +227,10 @@ func (s *Store) GetLatestProblems(ctx context.Context, limit int, status string)
 func (s *Store) GetLatestProblem(ctx context.Context) (*models.Problem, *appError.Error) {
 	var p models.Problem
 	query := `
-		SELECT id, name, group_name, url, time_limit_ms, memory_limit_mb, status, difficulty_level, 
-		       test_cases, created_at 
-		FROM problems 
-		ORDER BY created_at DESC 
+		SELECT id, name, group_name, url, time_limit_ms, memory_limit_mb, status, difficulty_level,
+		       test_cases, created_at
+		FROM problems
+		ORDER BY created_at DESC
 		LIMIT 1
 	`
 	if err := s.db.GetContext(ctx, &p, query); err != nil {
@@ -226,8 +248,8 @@ func (s *Store) GetProblemByID(ctx context.Context, id snowflake.ID) (*models.Pr
 	var p models.Problem
 	query := `
 		SELECT id, name, group_name, url, time_limit_ms, memory_limit_mb, saved_code, status, difficulty_level, description, notes,
-		       test_cases, created_at 
-		FROM problems 
+		       test_cases, created_at
+		FROM problems
 		WHERE id = $1
 	`
 	if err := s.db.GetContext(ctx, &p, query, id); err != nil {
@@ -248,8 +270,8 @@ func (s *Store) GetProblemsAfterID(ctx context.Context, afterID int64, size int,
 	if status == "" {
 		query := `
 		SELECT id, name, group_name, url, time_limit_ms, memory_limit_mb, status, difficulty_level,
-		       test_cases, created_at 
-		FROM problems 
+		       test_cases, created_at
+		FROM problems
 		WHERE id > $1
 		ORDER BY id ASC
 		LIMIT $2
@@ -258,8 +280,8 @@ func (s *Store) GetProblemsAfterID(ctx context.Context, afterID int64, size int,
 	} else {
 		query := `
 		SELECT id, name, group_name, url, time_limit_ms, memory_limit_mb, status, difficulty_level,
-		       test_cases, created_at 
-		FROM problems 
+		       test_cases, created_at
+		FROM problems
 		WHERE id > $1 AND status=$2
 		ORDER BY id ASC
 		LIMIT $3
@@ -283,8 +305,8 @@ func (s *Store) GetProblemsBeforeID(ctx context.Context, beforeID int64, size in
 	if status == "" {
 		query := `
 			SELECT id, name, group_name, url, time_limit_ms, memory_limit_mb, status, difficulty_level,
-				   test_cases, created_at 
-			FROM problems 
+				   test_cases, created_at
+			FROM problems
 			WHERE id < $1
 			ORDER BY id DESC
 			LIMIT $2
@@ -293,8 +315,8 @@ func (s *Store) GetProblemsBeforeID(ctx context.Context, beforeID int64, size in
 	} else {
 		query := `
 			SELECT id, name, group_name, url, time_limit_ms, memory_limit_mb, status, difficulty_level,
-				   test_cases, created_at 
-			FROM problems 
+				   test_cases, created_at
+			FROM problems
 			WHERE id < $1 AND status=$2
 			ORDER BY id DESC
 			LIMIT $3
@@ -332,7 +354,7 @@ func (s *Store) SearchProblemsFuzzy(ctx context.Context, query string, limit int
 	searchQuery := `
         SELECT id, name, group_name, url, time_limit_ms, memory_limit_mb, status, difficulty_level,
             created_at, status
-        FROM problems 
+        FROM problems
         WHERE name <-> $1 <= $2
         ORDER BY name <-> $1 ASC
         LIMIT $3
@@ -361,7 +383,7 @@ func (s *Store) SearchProblemsFuzzyWithStatus(ctx context.Context, query string,
 	searchQuery := `
         SELECT id, name, group_name, url, time_limit_ms, memory_limit_mb, status, difficulty_level,
                created_at, status
-        FROM problems 
+        FROM problems
         WHERE name <-> $1 <= $2
           AND status = $3
         ORDER BY name <-> $1 ASC
