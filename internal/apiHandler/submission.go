@@ -7,6 +7,7 @@ import (
 
 	"github.com/bwmarrin/snowflake"
 	"github.com/gin-gonic/gin"
+	sqlLib "github.com/himanshu3889/code-master-backend/base/lib/sql"
 	"github.com/himanshu3889/code-master-backend/base/utils"
 	"github.com/himanshu3889/code-master-backend/internal/lib"
 	"github.com/himanshu3889/code-master-backend/internal/models"
@@ -50,19 +51,6 @@ func (h *Handler) SubmitSubmission(c *gin.Context) {
 			return
 		}
 
-		// send async the submission to the websocket if executed properly
-		go func() {
-			if submissionExecutionResults != nil {
-				appWebsocket.HandleCodeSubmissionResults(&submission)
-			}
-		}()
-
-		// WAIT for the DB insert to finish to update the submission result
-		isReady := <-dbReady
-		if !isReady {
-			return
-		}
-
 		// Update the status
 		status := models.ExecutionStatus(submissionExecutionResults.Status)
 		submission.Status = &status
@@ -76,7 +64,7 @@ func (h *Handler) SubmitSubmission(c *gin.Context) {
 		// Update the stderr
 		submission.Stderr = &submissionExecutionResults.Stderr
 		// Update the testcase results
-		testCaseResult := make([]*models.TestResult, 0, len(submissionExecutionResults.TestCasesResult))
+		testCaseResult := make([]*models.TestResult, len(submissionExecutionResults.TestCasesResult))
 		for _, tcResult := range submissionExecutionResults.TestCasesResult {
 			status := models.ExecutionStatus(tcResult.Status)
 			testCaseResult[tcResult.TestIndex] = &models.TestResult{
@@ -86,7 +74,22 @@ func (h *Handler) SubmitSubmission(c *gin.Context) {
 				TimeMs:      tcResult.TimeMs,
 				MemoryBytes: tcResult.MemoryBytes,
 				Stderr:      &tcResult.Stderr,
+				Stdout:      &tcResult.ActualOutput,
 			}
+		}
+		submission.TestResults = sqlLib.NewJSONB(testCaseResult)
+
+		// send async the submission to the websocket if executed properly
+		go func() {
+			if submissionExecutionResults != nil {
+				appWebsocket.HandleCodeSubmissionResults(&submission)
+			}
+		}()
+
+		// WAIT for the DB insert to finish to update the submission result
+		isReady := <-dbReady
+		if !isReady {
+			return
 		}
 
 		// update the db

@@ -27,6 +27,7 @@ type TestResult struct {
 	TimeMs      int64           `json:"timeMs"`
 	MemoryBytes int64           `json:"memoryBytes"`
 	Stderr      *string         `json:"stderr,omitempty"`
+	Stdout      *string         `json:"stdout,omitempty" db:"stdout"`
 }
 
 // represents a historical record of code execution

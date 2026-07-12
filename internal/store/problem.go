@@ -17,8 +17,8 @@ import (
 // Create the problem from the companion
 func (s *Store) CreateProblemWithCompanion(ctx context.Context, p *models.Problem) *appError.Error {
 	query := `
-		INSERT INTO problems (id, name, group_name, url, time_limit_ms, memory_limit_mb, test_cases, raw_payload)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO problems (id, name, difficulty_level, group_name, url, time_limit_ms, memory_limit_mb, test_cases, raw_payload, description, notes)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING id, created_at
 	`
 	p.ID = utils.GenerateSnowflakeID()
@@ -29,12 +29,15 @@ func (s *Store) CreateProblemWithCompanion(ctx context.Context, p *models.Proble
 	if err := s.db.GetContext(ctx, p, query,
 		p.ID,
 		p.Name,
+		p.DifficultyLevel,
 		p.Group,
 		p.URL,
 		p.TimeLimit,
 		p.MemoryLimit,
 		p.TestCases,
 		p.RawPayload,
+		p.Description,
+		p.Notes,
 	); err != nil {
 		logrus.WithFields(logrus.Fields{
 			"problem_name": p.Name,

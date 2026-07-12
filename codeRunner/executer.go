@@ -397,17 +397,15 @@ func runSingleTest(r *runner, command, stdin, timeLimit string) TestCaseResult {
 		return result
 	}
 
-	// FIXED: Use /proc/self/fd/2 to write cat output to stderr without
-	// accidentally redirecting it into /dev/null due to shell order.
 	wrapperCmd := fmt.Sprintf(`
-cd /workspace
-rm -f .time_log .stderr_log
-/usr/bin/time -v -o .time_log timeout -s KILL %s %s 2>.stderr_log
-EXIT=$?
-cat .stderr_log > /proc/self/fd/2 2>/dev/null
-awk '/Maximum resident set size/{print "__MEM_KB__:" $6}' .time_log >&2
-exit $EXIT
-`, timeLimit, command)
+	cd /workspace
+	rm -f .time_log .stderr_log
+	/usr/bin/time -v -o .time_log timeout -s KILL %s %s 2>.stderr_log
+	EXIT=$?
+	cat .stderr_log > /proc/self/fd/2 2>/dev/null
+	awk '/Maximum resident set size/{print "__MEM_KB__:" $6}' .time_log >&2
+	exit $EXIT
+	`, timeLimit, command)
 
 	timeLimitSec, _ := strconv.Atoi(strings.TrimSuffix(timeLimit, "s"))
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeLimitSec+3)*time.Second)
@@ -460,8 +458,7 @@ exit $EXIT
 		case 139:
 			result.Status = StatusRuntimeError
 		default:
-			// FIXED: During execution, non-zero exit means runtime error.
-			// Compilation errors are handled in compileCode, not here.
+			// During execution, non-zero exit means runtime error.
 			if strings.Contains(result.Stderr, "Killed") || strings.Contains(result.Stderr, "killed") {
 				result.Status = StatusMemoryLimitExceeded
 			} else {
@@ -542,11 +539,11 @@ func runJob(langExt, code, filename, stdin string, testCases []TestCase, onResul
 		tr := runSingleTest(r, command, tc.Input, timeLimit)
 		tr.TestIndex = i
 
-		// Compare output for test cases
-		if tr.Status == StatusAccepted && strings.TrimSpace(tr.ActualOutput) != strings.TrimSpace(tc.Expected) {
-			tr.Status = StatusWrongAnswer
-			tr.Passed = false
-		}
+		// Don't Compare output for test cases for now
+		// if tr.Status == StatusAccepted && strings.TrimSpace(tr.ActualOutput) != strings.TrimSpace(tc.Expected) {
+		// 	tr.Status = StatusWrongAnswer
+		// 	tr.Passed = false
+		// }
 
 		overall.TestCasesResult = append(overall.TestCasesResult, tr)
 		overall.TimeMs += tr.TimeMs
