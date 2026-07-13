@@ -40,13 +40,14 @@ func (s *Store) CreateSubmissionLog(ctx context.Context, submission *models.Subm
 	// Insert submission
 	subQuery := `
         INSERT INTO submissions
-        (id, problem_id, stdin, language, test_cases, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        (id, problem_id, interview_session_id, stdin, language, test_cases, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING id
     `
 	if err := tx.GetContext(ctx, submission, subQuery,
 		submission.ID,
 		submission.ProblemID,
+		submission.InterviewSessionId,
 		submission.Stdin, // Note: You might want to check if this should be log.CodeSnapshot
 		submission.Language,
 		submission.TestCases,

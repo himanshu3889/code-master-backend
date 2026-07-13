@@ -1,0 +1,1 @@
+ALTER TABLE language DROP COLUMN IF EXISTS template;

@@ -37,6 +37,9 @@ func RunServer() {
 	// Start background submission retry worker (every 5 min, min age 5 min, batch 20)
 	stopRetryWorker := jobs.StartSubmissionRetryWorker(store, 5*time.Minute, 5*time.Minute, 20)
 
+	// Start background session timeout worker (every 30s)
+	stopSessionTimeoutWorker := jobs.StartSessionTimeoutWorker(store, 30*time.Second)
+
 	r := gin.Default()
 
 	r.Use(cors.New(cors.Config{
@@ -67,5 +70,6 @@ func RunServer() {
 	defer cancel()
 	srv.Shutdown(ctx)
 	stopRetryWorker()                // Stop background retry worker gracefully
+	stopSessionTimeoutWorker()       // Stop session timeout worker gracefully
 	codeRunner.ShutdownCodeRunners() // Shutdown
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/bwmarrin/snowflake"
 	"github.com/himanshu3889/code-master-backend/base/lib/appError"
 	"github.com/himanshu3889/code-master-backend/base/utils"
 	"github.com/himanshu3889/code-master-backend/internal/models"
@@ -27,22 +28,24 @@ func (s *Store) CreateCodeSnapshot(ctx context.Context, snapshot *models.CodeSna
 	snapshot.CreatedAt = time.Now()
 
 	timeline := &models.Timeline{
-		ID:             utils.GenerateSnowflakeID(),
-		CreatedAt:      time.Now(),
-		ProblemID:      snapshot.ProblemID,
-		CodeSnapshotID: &snapshot.ID, // Link to the snapshot we're creating
-		SubmissionID:   nil,          // No submission for snapshot-only events
+		ID:                 utils.GenerateSnowflakeID(),
+		CreatedAt:          time.Now(),
+		ProblemID:          snapshot.ProblemID,
+		InterviewSessionID: snapshot.InterviewSessionID,
+		CodeSnapshotID:     &snapshot.ID, // Link to the snapshot we're creating
+		SubmissionID:       nil,          // No submission for snapshot-only events
 	}
 
 	// 1. Insert code snapshot
 	query := `
-		INSERT INTO code_snapshots (id, problem_id, language, code, created_at)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO code_snapshots (id, problem_id, interview_session_id, language, code, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id
 	`
 	if err := tx.GetContext(ctx, snapshot, query,
 		snapshot.ID,
 		snapshot.ProblemID,
+		snapshot.InterviewSessionID,
 		snapshot.Language,
 		snapshot.Code,
 		snapshot.CreatedAt,
@@ -56,13 +59,14 @@ func (s *Store) CreateCodeSnapshot(ctx context.Context, snapshot *models.CodeSna
 
 	// 2. Insert timeline entry
 	timeQuery := `
-		INSERT INTO timeline (id, problem_id, submission_id, code_snapshot_id, created_at)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO timeline (id, problem_id, interview_session_id, submission_id, code_snapshot_id, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id
 	`
 	if err := tx.GetContext(ctx, timeline, timeQuery,
 		timeline.ID,
 		timeline.ProblemID,
+		timeline.InterviewSessionID,
 		timeline.SubmissionID,   // nil
 		timeline.CodeSnapshotID, // points to snapshot.ID
 		timeline.CreatedAt,
@@ -84,16 +88,32 @@ func (s *Store) CreateCodeSnapshot(ctx context.Context, snapshot *models.CodeSna
 }
 
 // Get problem code snapshots
-func (s *Store) GetCodeSnapshotsByProblem(ctx context.Context, problemID int64, limit int) ([]*models.CodeSnapshot, *appError.Error) {
+func (s *Store) GetCodeSnapshotsByProblem(ctx context.Context, problemID int64, interviewSessionID *snowflake.ID, limit int) ([]*models.CodeSnapshot, *appError.Error) {
 	var snapshots []*models.CodeSnapshot
-	query := `
-		SELECT id, problem_id, language, code, created_at 
-		FROM code_snapshots 
-		WHERE problem_id = $1 
-		ORDER BY created_at DESC
-		LIMIT $2
-	`
-	err := s.db.SelectContext(ctx, &snapshots, query, problemID, limit)
+	var query string
+	var args []interface{}
+
+	if interviewSessionID != nil {
+		query = `
+			SELECT id, problem_id, interview_session_id, language, code, created_at
+			FROM code_snapshots
+			WHERE problem_id = $1 AND interview_session_id = $2
+			ORDER BY created_at DESC
+			LIMIT $3
+		`
+		args = []interface{}{problemID, *interviewSessionID, limit}
+	} else {
+		query = `
+			SELECT id, problem_id, interview_session_id, language, code, created_at
+			FROM code_snapshots
+			WHERE problem_id = $1
+			ORDER BY created_at DESC
+			LIMIT $2
+		`
+		args = []interface{}{problemID, limit}
+	}
+
+	err := s.db.SelectContext(ctx, &snapshots, query, args...)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, appError.NewNotFound("Problem code snapshots not found")
@@ -111,8 +131,8 @@ func (s *Store) GetCodeSnapshotsByProblem(ctx context.Context, problemID int64, 
 func (s *Store) GetCodeSnapshotByID(ctx context.Context, id int64) (*models.CodeSnapshot, *appError.Error) {
 	var snapshot models.CodeSnapshot
 	query := `
-		SELECT id, problem_id, language, code, created_at 
-		FROM code_snapshots 
+		SELECT id, problem_id, interview_session_id, language, code, created_at
+		FROM code_snapshots
 		WHERE id = $1
 	`
 	if err := s.db.GetContext(ctx, &snapshot, query, id); err != nil {

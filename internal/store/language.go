@@ -41,8 +41,8 @@ func (s *Store) CreateLanguage(ctx context.Context, lang *models.Language) *appE
 func (s *Store) GetLanguageByCode(ctx context.Context, code string) (*models.Language, *appError.Error) {
 	var lang models.Language
 	query := `
-		SELECT id, name, code, extension, created_at 
-		FROM language 
+		SELECT id, name, code, extension, template, created_at
+		FROM language
 		WHERE code = $1
 	`
 	if err := s.db.GetContext(ctx, &lang, query, code); err != nil {
@@ -59,8 +59,8 @@ func (s *Store) GetLanguageByCode(ctx context.Context, code string) (*models.Lan
 func (s *Store) GetAllLanguages(ctx context.Context) ([]*models.Language, *appError.Error) {
 	var languages []*models.Language
 	query := `
-		SELECT id, name, code
-		FROM language 
+		SELECT id, name, code, template
+		FROM language
 		ORDER BY name ASC
 	`
 	if err := s.db.SelectContext(ctx, &languages, query); err != nil {
@@ -68,4 +68,30 @@ func (s *Store) GetAllLanguages(ctx context.Context) ([]*models.Language, *appEr
 		return nil, appError.NewInternal("Failed to get all languages")
 	}
 	return languages, nil
+}
+
+// UpsertLanguageTemplate updates the template for a language.
+func (s *Store) UpsertLanguageTemplate(ctx context.Context, code string, template string) *appError.Error {
+	query := `
+		UPDATE language
+		SET template = $1
+		WHERE code = $2
+	`
+	res, err := s.db.ExecContext(ctx, query, template, code)
+	if err != nil {
+		logrus.WithField("code", code).WithError(err).Error("Failed to update language template")
+		return appError.NewInternal("Failed to update language template")
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		logrus.WithField("code", code).WithError(err).Error("Failed to check rows affected")
+		return appError.NewInternal("Failed to update language template")
+	}
+
+	if rowsAffected == 0 {
+		return appError.NewNotFound("Language not found")
+	}
+
+	return nil
 }

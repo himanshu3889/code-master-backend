@@ -53,3 +53,33 @@ func (h *Handler) GetAllLanguages(c *gin.Context) {
 
 	utils.RespondWithSuccess(c, 200, languages)
 }
+
+// UpdateLanguageTemplate upserts the default code template for a language.
+func (h *Handler) UpdateLanguageTemplate(c *gin.Context) {
+	code := c.Param("code")
+	if code == "" {
+		utils.RespondWithError(c, 400, "Language code required")
+		return
+	}
+
+	type UpdateTemplateRequest struct {
+		Template string `json:"template" binding:"required"`
+	}
+
+	var input UpdateTemplateRequest
+	if err := c.ShouldBindJSON(&input); err != nil {
+		utils.RespondWithError(c, 400, "Invalid JSON or missing template")
+		return
+	}
+
+	appErr := h.store.UpsertLanguageTemplate(c.Request.Context(), code, input.Template)
+	if appErr != nil {
+		utils.RespondWithError(c, int(appErr.Code), appErr.Message)
+		return
+	}
+
+	utils.RespondWithSuccess(c, 200, gin.H{
+		"code":     code,
+		"template": input.Template,
+	})
+}

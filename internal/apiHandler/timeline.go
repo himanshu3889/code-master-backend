@@ -3,6 +3,7 @@ package handler
 import (
 	"strconv"
 
+	"github.com/bwmarrin/snowflake"
 	"github.com/gin-gonic/gin"
 	"github.com/himanshu3889/code-master-backend/base/utils"
 )
@@ -21,7 +22,18 @@ func (h *Handler) GetProblemTimeline(c *gin.Context) {
 		limit = 50
 	}
 
-	entries, appErr := h.store.GetTimelineByProblem(c.Request.Context(), id, limit)
+	var sessionID *snowflake.ID
+	sessionIdStr := c.DefaultQuery("interview_session", "")
+	if sessionIdStr != "" {
+		sid, err := utils.ValidSnowflakeID(sessionIdStr)
+		if err != nil {
+			utils.RespondWithError(c, 400, "Invalid interview session ID")
+			return
+		}
+		sessionID = &sid
+	}
+
+	entries, appErr := h.store.GetTimelineByProblem(c.Request.Context(), id, sessionID, limit)
 	if appErr != nil {
 		utils.RespondWithError(c, int(appErr.Code), appErr.Message)
 		return
@@ -44,7 +56,18 @@ func (h *Handler) GetDetailedTimelineByProblem(c *gin.Context) {
 		limit = 50
 	}
 
-	story, appErr := h.store.GetDetailedTimelineByProblem(c.Request.Context(), id, limit)
+	var sessionID *snowflake.ID
+	sessionIdStr := c.DefaultQuery("interview_session", "")
+	if sessionIdStr != "" {
+		sid, err := utils.ValidSnowflakeID(sessionIdStr)
+		if err != nil {
+			utils.RespondWithError(c, 400, "Invalid interview session ID")
+			return
+		}
+		sessionID = &sid
+	}
+
+	story, appErr := h.store.GetDetailedTimelineByProblem(c.Request.Context(), id, sessionID, limit)
 	if appErr != nil {
 		utils.RespondWithError(c, int(appErr.Code), appErr.Message)
 		return

@@ -9,17 +9,19 @@ import (
 
 // represents a historical record of code execution
 type Timeline struct {
-	ID             snowflake.ID  `json:"id" db:"id"`
-	ProblemID      snowflake.ID  `json:"problemId" db:"problem_id"`
-	SubmissionID   *snowflake.ID `json:"submissionId" db:"submission_id"`
-	CodeSnapshotID *snowflake.ID `json:"codeSnapshotId" db:"code_snapshot_id"`
-	CreatedAt      time.Time     `json:"createdAt" db:"created_at"`
+	ID                 snowflake.ID  `json:"id" db:"id"`
+	ProblemID          snowflake.ID  `json:"problemId" db:"problem_id"`
+	InterviewSessionID *snowflake.ID `json:"interviewSessionId,omitempty" db:"interview_session_id"`
+	SubmissionID       *snowflake.ID `json:"submissionId" db:"submission_id"`
+	CodeSnapshotID     *snowflake.ID `json:"codeSnapshotId" db:"code_snapshot_id"`
+	CreatedAt          time.Time     `json:"createdAt" db:"created_at"`
 }
 
 type DetailedTimeline struct {
 	// Timeline info
-	TimelineID        int64     `json:"timelineId" db:"timeline_id"`
-	TimelineCreatedAt time.Time `json:"timelineCreatedAt" db:"timeline_created_at"`
+	TimelineID         int64     `json:"timelineId" db:"timeline_id"`
+	TimelineCreatedAt  time.Time `json:"timelineCreatedAt" db:"timeline_created_at"`
+	InterviewSessionID *int64    `json:"interviewSessionId,omitempty" db:"interview_session_id"`
 
 	// Code snapshot info (can be nil if only submission)
 	CodeSnapshotID    *int64     `json:"codeSnapshotId,omitempty" db:"code_snapshot_id"`

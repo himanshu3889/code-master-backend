@@ -43,3 +43,11 @@ func NewInternal(message string) *Error {
 		Message: message,
 	}
 }
+
+// enforces a 409 status
+func NewConflict(message string) *Error {
+	return &Error{
+		Code:    StatusConflict,
+		Message: message,
+	}
+}

@@ -3,7 +3,7 @@ package handler
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/himanshu3889/code-master-backend/internal/store"
-	"github.com/himanshu3889/code-master-backend/internal/websocket"
+	appWebsocket "github.com/himanshu3889/code-master-backend/internal/websocket"
 )
 
 type Handler struct {
@@ -40,6 +40,7 @@ func SetupRoutes(r *gin.Engine, h *Handler) {
 		api.POST("/languages", h.CreateLanguage)
 		api.GET("/languages", h.GetAllLanguages)
 		api.GET("/languages/:code", h.GetLanguageByCode)
+		api.PATCH("/languages/:code/template", h.UpdateLanguageTemplate)
 
 		// Code submission
 		api.POST("/problems/:problemId/submissions", h.SubmitSubmission)
@@ -53,6 +54,15 @@ func SetupRoutes(r *gin.Engine, h *Handler) {
 		// Timeline (The Story)
 		api.GET("/problems/:problemId/timeline", h.GetProblemTimeline)
 		api.GET("/problems/:problemId/story", h.GetDetailedTimelineByProblem)
+
+		// Interview Sessions
+		api.POST("/interview-sessions", h.CreateInterviewSession)
+		api.GET("/interview-sessions/:id", h.GetInterviewSession)
+		api.GET("/problems/:problemId/interview-sessions", h.GetProblemInterviewSessions)
+		api.PATCH("/interview-sessions/:id/complete", h.CompleteInterviewSession)
+		api.PATCH("/interview-sessions/:id/abandon", h.AbandonInterviewSession)
+		api.POST("/interview-sessions/:id/timeout", h.TimeoutInterviewSession)
+		api.GET("/problems/:problemId/active-session", h.GetActiveInterviewSessionForProblem)
 	}
 
 }
