@@ -32,6 +32,7 @@ type Problem struct {
 	URL             string                          `json:"url,omitempty" db:"url"`
 	Status          string                          `json:"status" db:"status"`
 	SavedCode       sqlLib.JSONB[SavedCode]         `json:"savedCode" db:"saved_code"`
+	Tags            sqlLib.JSONB[[]string]          `json:"tags" db:"tags"`
 	AttemptCount    int                             `json:"attemptCount" db:"attempt_count"`
 	Notes           string                          `json:"notes" db:"notes"`
 	CreatedAt       time.Time                       `json:"createdAt" db:"created_at"`

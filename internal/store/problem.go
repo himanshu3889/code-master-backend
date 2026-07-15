@@ -17,14 +17,19 @@ import (
 // Create the problem from the companion
 func (s *Store) CreateProblemWithCompanion(ctx context.Context, p *models.Problem) *appError.Error {
 	query := `
-		INSERT INTO problems (id, name, difficulty_level, group_name, url, time_limit_ms, memory_limit_mb, test_cases, raw_payload, description, notes)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-		RETURNING id, created_at
+		INSERT INTO problems (id, name, difficulty_level, group_name, url, time_limit_ms, memory_limit_mb, test_cases, raw_payload, description, notes, tags)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		RETURNING id, created_at, tags
 	`
 	p.ID = utils.GenerateSnowflakeID()
-	p.TestCases = sqlLib.JSONB[[]models.ProblemTestCase]{
-		Data:  []models.ProblemTestCase{}, // Initialize empty slice
-		Valid: true,
+	if !p.TestCases.Valid {
+		p.TestCases = sqlLib.JSONB[[]models.ProblemTestCase]{
+			Data:  []models.ProblemTestCase{}, // Initialize empty slice
+			Valid: true,
+		}
+	}
+	if !p.Tags.Valid {
+		p.Tags = sqlLib.NewJSONB([]string{})
 	}
 	if err := s.db.GetContext(ctx, p, query,
 		p.ID,
@@ -38,6 +43,7 @@ func (s *Store) CreateProblemWithCompanion(ctx context.Context, p *models.Proble
 		p.RawPayload,
 		p.Description,
 		p.Notes,
+		p.Tags,
 	); err != nil {
 		logrus.WithFields(logrus.Fields{
 			"problem_name": p.Name,
@@ -167,6 +173,31 @@ func (s *Store) UpdateProblemNotes(ctx context.Context, problemId snowflake.ID, 
 	return nil
 }
 
+// Update problem tags
+func (s *Store) UpdateProblemTags(ctx context.Context, problemId snowflake.ID, tags []string) *appError.Error {
+	// Validation: ensure we aren't saving empty data
+	if problemId == 0 {
+		logrus.Warn("Received incomplete problem tags payload")
+		return appError.NewBadRequest("Recieve incomplete problem tags payload")
+	}
+
+	query := `
+        UPDATE problems
+        SET tags = $1
+        WHERE id = $2
+    `
+
+	tagData := sqlLib.NewJSONB(tags)
+
+	_, err := s.db.ExecContext(ctx, query, tagData, problemId)
+	if err != nil {
+		logrus.WithError(err).Error("Failed to save problem tags")
+		return appError.NewInternal("Database error")
+	}
+
+	return nil
+}
+
 // CountProblems returns the total number of problems, optionally filtered by status.
 func (s *Store) CountProblems(ctx context.Context, status string) (int64, *appError.Error) {
 	var count int64
@@ -194,7 +225,7 @@ func (s *Store) GetLatestProblems(ctx context.Context, limit int, offset int, st
 	if status == "" {
 		query := `
 		SELECT id, name, group_name, url, time_limit_ms, memory_limit_mb, status, difficulty_level,
-		       test_cases, created_at
+		       test_cases, tags, created_at
 		FROM problems
 		ORDER BY id DESC
 		LIMIT $1 OFFSET $2
@@ -204,7 +235,7 @@ func (s *Store) GetLatestProblems(ctx context.Context, limit int, offset int, st
 	} else {
 		query := `
 		SELECT id, name, group_name, url, time_limit_ms, memory_limit_mb, status, difficulty_level,
-		       test_cases, created_at
+		       test_cases, tags, created_at
 		FROM problems
 		WHERE status=$1
 		ORDER BY id DESC
@@ -228,7 +259,7 @@ func (s *Store) GetLatestProblem(ctx context.Context) (*models.Problem, *appErro
 	var p models.Problem
 	query := `
 		SELECT id, name, group_name, url, time_limit_ms, memory_limit_mb, status, difficulty_level,
-		       test_cases, created_at
+		       test_cases, tags, created_at
 		FROM problems
 		ORDER BY created_at DESC
 		LIMIT 1
@@ -248,7 +279,7 @@ func (s *Store) GetProblemByID(ctx context.Context, id snowflake.ID) (*models.Pr
 	var p models.Problem
 	query := `
 		SELECT id, name, group_name, url, time_limit_ms, memory_limit_mb, saved_code, status, difficulty_level, description, notes,
-		       test_cases, created_at
+		       test_cases, tags, created_at
 		FROM problems
 		WHERE id = $1
 	`
@@ -270,7 +301,7 @@ func (s *Store) GetProblemsAfterID(ctx context.Context, afterID int64, size int,
 	if status == "" {
 		query := `
 		SELECT id, name, group_name, url, time_limit_ms, memory_limit_mb, status, difficulty_level,
-		       test_cases, created_at
+		       test_cases, tags, created_at
 		FROM problems
 		WHERE id > $1
 		ORDER BY id ASC
@@ -280,7 +311,7 @@ func (s *Store) GetProblemsAfterID(ctx context.Context, afterID int64, size int,
 	} else {
 		query := `
 		SELECT id, name, group_name, url, time_limit_ms, memory_limit_mb, status, difficulty_level,
-		       test_cases, created_at
+		       test_cases, tags, created_at
 		FROM problems
 		WHERE id > $1 AND status=$2
 		ORDER BY id ASC
@@ -304,23 +335,23 @@ func (s *Store) GetProblemsBeforeID(ctx context.Context, beforeID int64, size in
 	var err error
 	if status == "" {
 		query := `
-			SELECT id, name, group_name, url, time_limit_ms, memory_limit_mb, status, difficulty_level,
-				   test_cases, created_at
-			FROM problems
-			WHERE id < $1
-			ORDER BY id DESC
-			LIMIT $2
-		`
+				SELECT id, name, group_name, url, time_limit_ms, memory_limit_mb, status, difficulty_level,
+					   test_cases, tags, created_at
+				FROM problems
+				WHERE id < $1
+				ORDER BY id DESC
+				LIMIT $2
+			`
 		err = s.db.SelectContext(ctx, &problems, query, beforeID, size)
 	} else {
 		query := `
-			SELECT id, name, group_name, url, time_limit_ms, memory_limit_mb, status, difficulty_level,
-				   test_cases, created_at
-			FROM problems
-			WHERE id < $1 AND status=$2
-			ORDER BY id DESC
-			LIMIT $3
-		`
+				SELECT id, name, group_name, url, time_limit_ms, memory_limit_mb, status, difficulty_level,
+					   test_cases, tags, created_at
+				FROM problems
+				WHERE id < $1 AND status=$2
+				ORDER BY id DESC
+				LIMIT $3
+			`
 		err = s.db.SelectContext(ctx, &problems, query, beforeID, status, size)
 	}
 	if err != nil {
@@ -353,7 +384,7 @@ func (s *Store) SearchProblemsFuzzy(ctx context.Context, query string, limit int
 	// Use <-> for distance. Order by distance ASC (lowest distance = highest similarity)
 	searchQuery := `
         SELECT id, name, group_name, url, time_limit_ms, memory_limit_mb, status, difficulty_level,
-            created_at, status
+            tags, created_at, status
         FROM problems
         WHERE name <-> $1 <= $2
         ORDER BY name <-> $1 ASC
@@ -382,7 +413,7 @@ func (s *Store) SearchProblemsFuzzyWithStatus(ctx context.Context, query string,
 	// Exact status match + true fuzzy name using distance (<->)
 	searchQuery := `
         SELECT id, name, group_name, url, time_limit_ms, memory_limit_mb, status, difficulty_level,
-               created_at, status
+               tags, created_at, status
         FROM problems
         WHERE name <-> $1 <= $2
           AND status = $3

@@ -25,6 +25,7 @@ func SetupRoutes(r *gin.Engine, h *Handler) {
 	{
 		// Problems
 		api.GET("/problems", h.GetLatestProblems)
+		api.GET("/problems/tags", h.GetAllTags)
 		api.GET("/problems/:problemId", h.GetProblem)
 		api.GET("problems/latest", h.GetLatestProblem)
 		api.GET("/problems/after/:afterId", h.GetProblemsAfterID)
@@ -35,6 +36,7 @@ func SetupRoutes(r *gin.Engine, h *Handler) {
 		api.PATCH("/problems/:problemId/difficulty", h.UpdateProblemDifficultyLevel)
 		api.PATCH("/problems/:problemId/notes", h.UpdateProblemNotes)
 		api.PATCH("/problems/:problemId/description", h.UpdateProblemDescription)
+		api.PATCH("/problems/:problemId/tags", h.UpdateProblemTags)
 
 		// Languages
 		api.POST("/languages", h.CreateLanguage)

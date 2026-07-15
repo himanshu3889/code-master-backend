@@ -7,7 +7,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/himanshu3889/code-master-backend/base/lib/appError"
 	"github.com/himanshu3889/code-master-backend/base/lib/pagination"
+	sqlLib "github.com/himanshu3889/code-master-backend/base/lib/sql"
 	"github.com/himanshu3889/code-master-backend/base/utils"
+	"github.com/himanshu3889/code-master-backend/internal/lib/tagging"
 	"github.com/himanshu3889/code-master-backend/internal/models"
 	appWebsocket "github.com/himanshu3889/code-master-backend/internal/websocket"
 	"github.com/sirupsen/logrus"
@@ -33,6 +35,9 @@ func (h *Handler) ReceiveProblem(c *gin.Context) {
 
 	problem.RawPayload = string(bodyBytes)
 	problem.Status = "TODO"
+	if !problem.Tags.Valid || len(problem.Tags.Data) == 0 {
+		problem.Tags = sqlLib.NewJSONB(tagging.DetectTags(problem.Name, problem.Description))
+	}
 
 	if appErr := h.store.CreateProblemWithCompanion(c.Request.Context(), &problem); appErr != nil {
 		utils.RespondWithError(c, int(appErr.Code), appErr.Message)
@@ -348,4 +353,48 @@ func (h *Handler) SearchProblemsFuzzy(c *gin.Context) {
 	}
 
 	utils.RespondWithSuccess(c, 200, response)
+}
+
+// UpdateProblemTags updates the tags of a problem
+func (h *Handler) UpdateProblemTags(c *gin.Context) {
+	idString := c.Param("problemId")
+	problemId, err := utils.ValidSnowflakeID(idString)
+	if err != nil {
+		utils.RespondWithError(c, 400, "Invalid ID")
+		return
+	}
+
+	type UpdateTagsRequest struct {
+		Tags []string `json:"tags" binding:"required"`
+	}
+
+	var input UpdateTagsRequest
+	if err := c.ShouldBindJSON(&input); err != nil {
+		utils.RespondWithError(c, 400, "Invalid JSON or missing tags")
+		return
+	}
+
+	// Deduplicate tags
+	seen := make(map[string]struct{})
+	uniqueTags := make([]string, 0, len(input.Tags))
+	for _, tag := range input.Tags {
+		if _, ok := seen[tag]; !ok {
+			seen[tag] = struct{}{}
+			uniqueTags = append(uniqueTags, tag)
+		}
+	}
+
+	appErr := h.store.UpdateProblemTags(c.Request.Context(), problemId, uniqueTags)
+	if appErr != nil {
+		utils.RespondWithError(c, int(appErr.Code), appErr.Message)
+		return
+	}
+
+	utils.RespondWithSuccess(c, 201, gin.H{"message": "Problem tags updated"})
+}
+
+// GetAllTags returns the list of all available pattern tags
+func (h *Handler) GetAllTags(c *gin.Context) {
+	tags := tagging.GetAllTags()
+	utils.RespondWithSuccess(c, 200, gin.H{"tags": tags})
 }
